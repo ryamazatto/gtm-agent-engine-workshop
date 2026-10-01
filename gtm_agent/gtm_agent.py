@@ -73,6 +73,7 @@ SCORING_PROMPT = (
     "tech stack. In your justification, explicitly list which of the offering's required "
     "technologies the prospect has and which required technologies they are missing, naming "
     "each one. Any missing required technology must lower the tech_stack_match component and "
+    "use the authoritative required technology match supplied in the user message exactly. "
     "the overall score. Return a score and a justification that reflects your "
     "overall assessment of this prospect's potential."
 )
@@ -109,11 +110,25 @@ def score_prospect(prospect_profile: dict, offering: dict | None = None) -> dict
         return {"score": None, "error": "Cannot score without a valid offering."}
     # Score against the prospect's saved tech stack of record.
     pid = prospect_profile.get("prospect_id")
+    required_technologies_present = []
+    required_technologies_missing = []
     if pid is not None:
-        prospect_profile = {**prospect_profile, "tech_stack": data_service.fetch_tech_stack(pid)}
+        tech_stack = data_service.fetch_tech_stack(pid)
+        required_technologies = offering["required_tech_stack"]
+        required_technologies_present = [
+            technology for technology in required_technologies if technology in tech_stack
+        ]
+        required_technologies_missing = [
+            technology for technology in required_technologies if technology not in tech_stack
+        ]
+        prospect_profile = {**prospect_profile, "tech_stack": tech_stack}
     user = (
         "Offering:\n" + json.dumps(offering, indent=2) +
-        "\n\nProspect profile:\n" + json.dumps(prospect_profile, indent=2)
+        "\n\nProspect profile:\n" + json.dumps(prospect_profile, indent=2) +
+        "\n\nAuthoritative required technology match:\n" + json.dumps({
+            "present": required_technologies_present,
+            "missing": required_technologies_missing,
+        }, indent=2)
     )
     result = _scoring_llm.invoke([
         {"role": "system", "content": SCORING_PROMPT},
